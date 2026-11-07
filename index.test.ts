@@ -126,7 +126,7 @@ function environment() {
     },
   }
   function selected(id: string) {
-    const entry = providers.get(`openai-cred_${id}`)
+    const entry = providers.get(`openai-${id}`)
     assert.ok(entry)
     const selected = entry.models.get("gpt-6-astra")
     assert.ok(selected)
@@ -170,13 +170,13 @@ test("saved ChatGPT accounts become separate providers with their model variants
   const state = environment()
   const source = structuredClone(state.source)
   t.after(await setup(state.context))
-  assert.deepEqual([...state.providers.keys()], ["openai-cred_personal", "openai-cred_stampen"])
+  assert.deepEqual([...state.providers.keys()], ["openai-personal", "openai-stampen"])
   assert.deepEqual([...state.providers.values()].map((entry) => entry.provider.name), ["personal", "stampen"])
   for (const entry of state.providers.values()) {
     assert.deepEqual([...entry.models.keys()], ["gpt-6-astra"])
     const item = entry.models.get("gpt-6-astra")
     assert.ok(item)
-    assert.equal(item.name, `${state.labels.get(entry.provider.id.slice(7))} - GPT-6 Astra`)
+    assert.equal(item.name, `${entry.provider.name} - GPT-6 Astra`)
     assert.equal(item.id, "gpt-6-astra")
     assert.equal(item.modelID, "gpt-6-astra")
     assert.equal(item.providerID, entry.provider.id)
@@ -191,6 +191,38 @@ test("saved ChatGPT accounts become separate providers with their model variants
   assert.ok(!catalog.includes("stampen-token"))
 })
 
+test("provider IDs follow account labels so the same account matches across hosts", async (t) => {
+  const state = environment()
+  state.credentials.delete("cred_personal")
+  state.credentials.set("cred_otherhost", credential("personal"))
+  state.labels.set("cred_otherhost", "personal")
+  state.labels.set("cred_stampen", "  Work Account! ")
+  t.after(await setup(state.context))
+  assert.deepEqual([...state.providers.keys()].sort(), ["openai-personal", "openai-work-account"])
+  assert.equal(state.providers.get("openai-work-account")?.provider.name, "  Work Account! ")
+  assert.equal(state.providers.get("openai-work-account")?.models.get("gpt-6-astra")?.providerID, "openai-work-account")
+  assert.equal((await authorize(state.selected("personal"))).authorization, "Bearer personal-token")
+})
+
+test("blank or colliding labels fall back to credential-based provider IDs", async (t) => {
+  const state = environment()
+  state.labels.set("cred_personal", "Team")
+  state.labels.set("cred_stampen", "team")
+  state.credentials.set("cred_blank", credential("blank"))
+  state.labels.set("cred_blank", " !! ")
+  state.credentials.set("cred_lookalike", credential("lookalike"))
+  state.labels.set("cred_lookalike", "cred_personal")
+  t.after(await setup(state.context))
+  assert.deepEqual([...state.providers.keys()].sort(), [
+    "openai-cred-personal",
+    "openai-cred_blank",
+    "openai-cred_personal",
+    "openai-cred_stampen",
+  ])
+  assert.equal((await authorize(state.selected("cred_personal"))).authorization, "Bearer personal-token")
+  assert.equal((await authorize(state.selected("cred_stampen"))).authorization, "Bearer stampen-token")
+})
+
 test("generic OpenAI models are hidden only while named account models are available", async () => {
   const state = environment()
   const otherID = Provider.ID.make("other-provider")
@@ -203,8 +235,8 @@ test("generic OpenAI models are hidden only while named account models are avail
   try {
     const visible = state.availableModels()
     assert.equal(visible.some((item) => item.providerID === "openai"), false)
-    assert.equal(visible.some((item) => item.providerID === "openai-cred_personal"), true)
-    assert.equal(visible.some((item) => item.providerID === "openai-cred_stampen"), true)
+    assert.equal(visible.some((item) => item.providerID === "openai-personal"), true)
+    assert.equal(visible.some((item) => item.providerID === "openai-stampen"), true)
     assert.equal(visible.some((item) => item.providerID === otherID), true)
     assert.deepEqual(state.source, source)
 
@@ -279,22 +311,22 @@ test("account additions, renames, and removals update the catalog without rebind
   state.labels.set("cred_personal", "Private")
   state.credentials.set("cred_additional", credential("additional"))
   await state.changed()
-  assert.equal(state.providers.get("openai-cred_personal")?.provider.name, "Private")
-  assert.equal(state.providers.get("openai-cred_personal")?.provider.id, "openai-cred_personal")
-  const renamed = state.providers.get("openai-cred_personal")?.models.get("gpt-6-astra")
+  assert.equal(state.providers.has("openai-personal"), false)
+  assert.equal(state.providers.get("openai-private")?.provider.name, "Private")
+  const renamed = state.providers.get("openai-private")?.models.get("gpt-6-astra")
   assert.ok(renamed)
   assert.equal(renamed.name, "Private - GPT-6 Astra")
   assert.equal(renamed.id, "gpt-6-astra")
   assert.equal(renamed.modelID, "gpt-6-astra")
-  assert.equal(renamed.providerID, "openai-cred_personal")
-  assert.equal(state.providers.get("openai-cred_stampen")?.models.get("gpt-6-astra")?.name, "stampen - GPT-6 Astra")
+  assert.equal(renamed.providerID, "openai-private")
+  assert.equal(state.providers.get("openai-stampen")?.models.get("gpt-6-astra")?.name, "stampen - GPT-6 Astra")
   assert.deepEqual(state.source, source)
   assert.equal(state.providers.size, 3)
   assert.equal((await authorize(personal)).authorization, "Bearer personal-token")
 
   state.credentials.delete("cred_personal")
   await state.changed()
-  assert.equal(state.providers.has("openai-cred_personal"), false)
+  assert.equal(state.providers.has("openai-private"), false)
   await assert.rejects(authorize(personal), /binding was removed/)
   assert.equal((await authorize(state.selected("stampen"))).authorization, "Bearer stampen-token")
 })
@@ -321,7 +353,7 @@ test("all account request kinds omit output limits without changing other provid
   try {
     assert.deepEqual([...state.hooks.keys()], ["context", "compaction", "generate", "title"])
     for (const hook of state.hooks.values()) {
-      for (const providerID of ["openai-cred_personal", "openai-cred_stampen", "openai", "anthropic"]) {
+      for (const providerID of ["openai-personal", "openai-stampen", "openai", "openai-unknown", "anthropic"]) {
         const event: SessionContext = {
           sessionID: Session.ID.make("session_output_limit"),
           agent: Agent.ID.make("build"),
@@ -332,7 +364,7 @@ test("all account request kinds omit output limits without changing other provid
           options: { maxTokens: 8192, reasoningEffort: "high" },
         }
         await hook(event)
-        assert.equal(event.options.maxTokens, providerID.startsWith("openai-cred_") ? undefined : 8192)
+        assert.equal(event.options.maxTokens, ["openai-personal", "openai-stampen"].includes(providerID) ? undefined : 8192)
         assert.equal(event.options.reasoningEffort, "high")
       }
     }
@@ -348,7 +380,7 @@ test("token-sharing accounts become providers without an account ID", async (t) 
   state.credentials.delete("cred_stampen")
   t.after(await setup(state.context))
   assert.deepEqual([...state.providers.values()].map((entry) => entry.provider.name), ["personal"])
-  const entry = state.providers.get("openai-cred_personal")
+  const entry = state.providers.get("openai-personal")
   assert.ok(entry)
   assert.equal(entry.provider.settings?.baseURL, "https://api.openai.com/v1")
   assert.equal(entry.provider.settings?.transport, "http")
@@ -370,8 +402,8 @@ test("mixed codex and token-sharing accounts use their own endpoints", async (t)
   state.credentials.set("cred_personal", tokenCredential("personal"))
   t.after(await setup(state.context))
   assert.equal(state.providers.size, 2)
-  const tokenEntry = state.providers.get("openai-cred_personal")
-  const codexEntry = state.providers.get("openai-cred_stampen")
+  const tokenEntry = state.providers.get("openai-personal")
+  const codexEntry = state.providers.get("openai-stampen")
   assert.ok(tokenEntry)
   assert.ok(codexEntry)
   assert.equal(tokenEntry.provider.settings?.baseURL, "https://api.openai.com/v1")
@@ -402,8 +434,8 @@ test("OpenCode 2.2.5 model eligibility and context caps apply independently to e
     })
   }
   t.after(await setup(state.context))
-  const token = state.providers.get("openai-cred_personal")
-  const codex = state.providers.get("openai-cred_stampen")
+  const token = state.providers.get("openai-personal")
+  const codex = state.providers.get("openai-stampen")
   assert.ok(token)
   assert.ok(codex)
   assert.equal(token.models.has("gpt-5.5"), true)

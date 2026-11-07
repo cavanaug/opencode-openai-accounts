@@ -33,7 +33,8 @@ Preserve other plugin entries. Configure the directory, not `index.ts`, and do n
 ## Behavior
 
 - Model names are exactly `<account label> - <model name>`; provider headings use only the account label.
-- Provider IDs remain `openai-<credentialID>`, so renaming accounts preserves model selections. Reconnecting creates a new credential ID and requires selecting that account again.
+- Provider IDs follow account labels: `openai-<label slug>`, e.g. `openai-work` for an account labeled `Work`. The slug is lowercase, with runs of other characters collapsed to `-`. Saving the same label on every host gives the same provider ID, so synced sessions and `provider.use` policies resolve on each host even though separate sign-ins have different credential IDs.
+- Renaming an account changes its provider ID; sessions bound to the old ID must select the account again. A blank label, or labels that produce the same slug, fall back to `openai-<credentialID>`, which never collides with a label slug.
 - Credentials stay in OpenCode. Each request resolves its bound credential, including OAuth refresh; concurrent resolutions for the same account are shared.
 - Missing or unusable credentials fail closed, without falling back to another account or an environment API key.
 - OpenCode's native OpenAI runtime handles requests. The small adapter supplies account-specific authentication and restricts credentials to their intended endpoint.

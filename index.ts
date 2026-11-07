@@ -192,16 +192,37 @@ function contextLimit(model: Model.Info) {
     : { ...model.limit, input, context: input + model.limit.output }
 }
 
+function labelSlug(label: string) {
+  return label.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+}
+
+// Label-based IDs let synced sessions and policies resolve the same account on every host.
+// Slugs never contain "_", so they cannot collide with the credential-ID fallback.
+function providerIDs(connections: readonly SavedConnection[]) {
+  const counts = new Map<string, number>()
+  for (const connection of connections) {
+    const slug = labelSlug(connection.label)
+    counts.set(slug, (counts.get(slug) ?? 0) + 1)
+  }
+  return new Map(connections.map((connection) => {
+    const slug = labelSlug(connection.label)
+    const suffix = slug && counts.get(slug) === 1 ? slug : connection.id
+    return [connection.id, Provider.ID.make(`openai-${suffix}`)]
+  }))
+}
+
 /** Register one provider per saved ChatGPT account and follow account changes. */
 export async function setup(context: Context) {
-  let accounts = new Map<string, { connection: SavedConnection; bindingID: string; kind: Binding["kind"]; baseURL: string }>()
+  type Account = { connection: SavedConnection; bindingID: string; kind: Binding["kind"]; baseURL: string; providerID: Provider.ID }
+  let accounts = new Map<string, Account>()
+  let accountProviders = new Set<string>()
   const controller = new AbortController()
   const entrypoint = new URL(import.meta.url)
   entrypoint.searchParams.set("account-runtime", crypto.randomUUID())
 
   async function synchronize() {
     const { data } = await context.integration.get({ integrationID: "openai" })
-    const next = new Map<string, { connection: SavedConnection; bindingID: string; kind: Binding["kind"]; baseURL: string }>()
+    const next = new Map<string, Omit<Account, "providerID">>()
     for (const connection of data.connections) {
       if (connection.type !== "credential") continue
       let credential: Credential.Value | undefined
@@ -226,15 +247,16 @@ export async function setup(context: Context) {
     for (const [id, account] of accounts) {
       if (!next.has(id)) runtime.bindings.delete(account.bindingID)
     }
-    accounts = next
+    const ids = providerIDs([...next.values()].map((account) => account.connection))
+    accounts = new Map([...next].map(([id, account]) => [id, { ...account, providerID: ids.get(id)! }]))
+    accountProviders = new Set(ids.values())
   }
 
   await synchronize()
   const registration = await context.provider.transform((editor) => {
     const source = editor.get("openai")
     if (!source) return
-    for (const { connection, bindingID, kind, baseURL } of accounts.values()) {
-      const id = Provider.ID.make(`openai-${connection.id}`)
+    for (const { connection, bindingID, kind, baseURL, providerID: id } of accounts.values()) {
       const filter = kind === "token" ? isTokenSharingModel : isChatGPTModel
       editor.add({
         info: {
@@ -274,14 +296,13 @@ export async function setup(context: Context) {
   })
 
   const modelRegistration = await context.model.transform((editor) => {
-    const hasAccountModels = editor.list().some((item) =>
-      item.enabled && item.providerID.startsWith("openai-") && accounts.has(item.providerID.slice("openai-".length)))
+    const hasAccountModels = editor.list().some((item) => item.enabled && accountProviders.has(item.providerID))
     if (!hasAccountModels) return
     for (const item of editor.list("openai")) editor.remove(item.providerID, item.id)
   })
 
   const omitOutputLimit = (event: SessionRequest) => {
-    if (event.model.providerID.startsWith("openai-") && accounts.has(event.model.providerID.slice(7))) {
+    if (accountProviders.has(event.model.providerID)) {
       delete event.options.maxTokens
     }
   }
