@@ -13,7 +13,7 @@ Choose the account and model together. Sessions can use different accounts concu
 
 ## Install
 
-Targets OpenCode **2.2.5**. Save and name accounts through `/connect`, using **Sign in with ChatGPT** or a legacy Codex login. API-key and environment connections are excluded.
+Targets OpenCode **2.2.7**. Save and name accounts through `/connect`, using **Sign in with ChatGPT** or a legacy Codex login. API-key and environment connections are excluded.
 
 Install the checkout's dependencies and add its directory to `~/.config/opencode/opencode.jsonc`:
 
@@ -38,9 +38,9 @@ Preserve other plugin entries. Configure the directory, not `index.ts`, and do n
 - Credentials stay in OpenCode. Each request resolves its bound credential, including OAuth refresh; concurrent resolutions for the same account are shared.
 - Missing or unusable credentials fail closed, without falling back to another account or an environment API key.
 - OpenCode's native OpenAI runtime handles requests. The small adapter supplies account-specific authentication and restricts credentials to their intended endpoint.
-- Current ChatGPT sign-ins use `https://api.openai.com/v1`, HTTP transport, summary compaction, and the OpenCode 2.2.5 token-sharing fallback inventory, including GPT-6.1 Terra.
+- Current ChatGPT sign-ins use `https://api.openai.com/v1`, HTTP transport, summary compaction, and the OpenCode 2.2.7 token-sharing fallback inventory, including GPT-6.1 Terra.
 - Legacy Codex sign-ins use `https://chatgpt.com/backend-api/codex`, account headers, GPT models newer than 5.5 except `gpt-5.6`, and `gpt-image-2` when present in the source catalog.
-- Subscription entries have no token cost, exclude pro reasoning variants, and default to compressed requests. Input caps match OpenCode 2.2.5: 500,000 for GPT-6.1 and newer, 272,000 for older models, without increasing smaller catalog limits.
+- Subscription entries have no token cost, exclude pro reasoning variants, and default to compressed requests. Input caps match OpenCode 2.2.7: 500,000 for GPT-6.1 and newer, 272,000 for older models, without increasing smaller catalog limits.
 - Account requests omit explicit output-token overrides for prompts, compaction, transient generation, and titles.
 - Account changes refresh the catalog. Generic OpenAI models are hidden while at least one named account has available models; the underlying integration and logins remain intact. If no account models remain, the generic models return.
 - Existing sessions selected on `openai/...` must switch to a named account entry. Hiding is a model-catalog transform, not a UI patch or a change to authentication.
@@ -56,4 +56,4 @@ npm test
 
 Existing tests cover labels and renames, concurrent account isolation, refreshed credentials, failure behavior, endpoint restrictions, output-limit omission, and cleanup without real credentials.
 
-References: [plugin API](https://opencode.ai/v2/docs/build/plugins/server), [ChatGPT policy](https://github.com/anomalyco/opencode/blob/v2.2.5/packages/core/src/plugin/provider/chatgpt.ts), [Codex policy](https://github.com/anomalyco/opencode/blob/v2.2.5/packages/core/src/plugin/provider/openai.ts), [context caps](https://github.com/anomalyco/opencode/blob/v2.2.5/packages/core/src/plugin/provider/openai-context-caps.ts).
+References: [plugin API](https://opencode.ai/v2/docs/build/plugins/server), [ChatGPT policy](https://github.com/anomalyco/opencode/blob/v2.2.7/packages/core/src/plugin/provider/chatgpt.ts), [Codex policy](https://github.com/anomalyco/opencode/blob/v2.2.7/packages/core/src/plugin/provider/openai.ts), [context caps](https://github.com/anomalyco/opencode/blob/v2.2.7/packages/core/src/plugin/provider/openai-context-caps.ts).

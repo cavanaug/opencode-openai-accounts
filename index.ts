@@ -10,7 +10,7 @@ import { Headers } from "effect/http"
 const codexBaseURL = "https://chatgpt.com/backend-api/codex"
 const tokenBaseURL = "https://api.openai.com/v1"
 
-// Mirrors OpenCode 2.2.5's token-sharing fallback inventory.
+// Mirrors OpenCode 2.2.7's token-sharing fallback inventory.
 const tokenSharingModels = new Set([
   "gpt-5.5",
   "gpt-5.5-fast",

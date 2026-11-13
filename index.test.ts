@@ -72,7 +72,7 @@ function environment() {
     models: { set: unexpected, update: unexpected, remove: unexpected },
   }
   const context: Context = {
-    app: { name: "opencode", version: "2.2.5", channel: "release" },
+    app: { name: "opencode", version: "2.2.7", channel: "release" },
     integration: {
       get: async () => ({
         location: { directory: "/project" },
@@ -135,7 +135,12 @@ function environment() {
   async function changed() {
     notification = Promise.withResolvers<void>()
     assert.ok(eventController)
-    eventController.enqueue({ type: "credential.updated", id: "evt_changed", created: Date.now(), data: {} })
+    eventController.enqueue({
+      type: "credential.updated",
+      id: "evt_changed",
+      created: Date.now(),
+      data: { integrationID: "openai", credentialID: "cred_personal" },
+    })
     await notification.promise
   }
   function availableModels() {
@@ -421,7 +426,7 @@ test("mixed codex and token-sharing accounts use their own endpoints", async (t)
   await assert.rejects(authorize(codex, "https://api.openai.com/v1/responses"), /different endpoint/)
 })
 
-test("OpenCode 2.2.5 model eligibility and context caps apply independently to each account", async (t) => {
+test("OpenCode 2.2.7 model eligibility and context caps apply independently to each account", async (t) => {
   const state = environment()
   state.credentials.set("cred_personal", tokenCredential("personal"))
   for (const id of ["gpt-5.5", "gpt-5.3-codex-spark", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6.1-terra-fast", "gpt-6.1-pro", "gpt-image-2"]) {
