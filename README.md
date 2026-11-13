@@ -30,6 +30,8 @@ npm ci
 
 Preserve other plugin entries. Configure the directory, not `index.ts`, and do not also load an installed copy. OpenCode reloads configuration automatically; `/reload` forces a refresh. No `cli.json` entry is needed.
 
+The `@opencode/*` dependencies are pinned to the targeted release and must be bumped with it. OpenCode has moved the provider request APIs in patch releases, so setup warns when the running version differs from the pins, and every account model fails with a clear error instead of the backend's `Store must be set to false` if the host drops the OpenAI request defaults.
+
 ## Behavior
 
 - Model names are exactly `<account label> - <model name>`; provider headings use only the account label.
@@ -42,6 +44,7 @@ Preserve other plugin entries. Configure the directory, not `index.ts`, and do n
 - Legacy Codex sign-ins use `https://chatgpt.com/backend-api/codex`, account headers, GPT models newer than 5.5 except `gpt-5.6`, and `gpt-image-2` when present in the source catalog.
 - Subscription entries have no token cost, exclude pro reasoning variants, and default to compressed requests. Input caps match OpenCode 2.2.7: 500,000 for GPT-6.1 and newer, 272,000 for older models, without increasing smaller catalog limits.
 - Account requests omit explicit output-token overrides for prompts, compaction, transient generation, and titles.
+- Account requests ask for `store: false` explicitly, and model construction verifies the host applied it, so a version skew surfaces as a plugin error instead of a rejected request.
 - Account changes refresh the catalog. Generic OpenAI models are hidden while at least one named account has available models; the underlying integration and logins remain intact. If no account models remain, the generic models return.
 - Existing sessions selected on `openai/...` must switch to a named account entry. Hiding is a model-catalog transform, not a UI patch or a change to authentication.
 
@@ -54,6 +57,6 @@ npm run check
 npm test
 ```
 
-Existing tests cover labels and renames, concurrent account isolation, refreshed credentials, failure behavior, endpoint restrictions, output-limit omission, and cleanup without real credentials.
+Existing tests cover labels and renames, concurrent account isolation, refreshed credentials, failure behavior, endpoint restrictions, request defaults, version skew, output-limit omission, and cleanup without real credentials.
 
 References: [plugin API](https://opencode.ai/v2/docs/build/plugins/server), [ChatGPT policy](https://github.com/anomalyco/opencode/blob/v2.2.7/packages/core/src/plugin/provider/chatgpt.ts), [Codex policy](https://github.com/anomalyco/opencode/blob/v2.2.7/packages/core/src/plugin/provider/openai.ts), [context caps](https://github.com/anomalyco/opencode/blob/v2.2.7/packages/core/src/plugin/provider/openai-context-caps.ts).

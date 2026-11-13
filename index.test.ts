@@ -426,6 +426,28 @@ test("mixed codex and token-sharing accounts use their own endpoints", async (t)
   await assert.rejects(authorize(codex, "https://api.openai.com/v1/responses"), /different endpoint/)
 })
 
+test("account models carry store: false, which the ChatGPT backend requires", async (t) => {
+  const state = environment()
+  t.after(await setup(state.context))
+  const selected = state.selected("personal")
+  // 2.2.7 keeps request defaults on the model; earlier releases kept them on the route.
+  const current = (selected.options as { providerOptions?: Record<string, unknown> } | undefined)?.providerOptions
+  const legacy = (selected.route as unknown as { defaults?: { providerOptions?: Record<string, unknown> } }).defaults
+    ?.providerOptions
+  assert.equal((current ?? legacy)?.store, false)
+})
+
+test("a running OpenCode that differs from the pinned dependencies warns at setup", async (t) => {
+  const state = environment()
+  state.context.app = { ...state.context.app, version: "9.9.9" }
+  const warnings: string[] = []
+  const warn = console.warn
+  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")) }
+  t.after(() => { console.warn = warn })
+  t.after(await setup(state.context))
+  assert.ok(warnings.some((line) => line.includes("targets OpenCode")), warnings.join("\n"))
+})
+
 test("OpenCode 2.2.7 model eligibility and context caps apply independently to each account", async (t) => {
   const state = environment()
   state.credentials.set("cred_personal", tokenCredential("personal"))

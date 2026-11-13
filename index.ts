@@ -6,9 +6,34 @@ import type { ModelHooks } from "@opencode/plugin/promise/registration"
 import type { SessionHooks, SessionRequest } from "@opencode/plugin/promise/session"
 import { Effect } from "effect"
 import { Headers } from "effect/http"
+import { readFileSync } from "node:fs"
 
 const codexBaseURL = "https://chatgpt.com/backend-api/codex"
 const tokenBaseURL = "https://api.openai.com/v1"
+
+/** The OpenCode release this plugin's @opencode/* dependencies were installed for. */
+const targetOpenCode = (() => {
+  try {
+    const manifest = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"))
+    const version = manifest?.dependencies?.["@opencode/ai"]
+    return typeof version === "string" ? version : undefined
+  } catch {
+    return undefined
+  }
+})()
+
+type RequestDefaults = { providerOptions?: Record<string, unknown> }
+
+/**
+ * Request defaults moved from `route.defaults` to `model.options` in OpenCode 2.2.7. A model built
+ * against a different @opencode/ai than the running OpenCode silently loses them, and the ChatGPT
+ * backend then rejects every request with "Store must be set to false".
+ */
+function requestDefaults(model: { options?: RequestDefaults; route?: unknown }): RequestDefaults | undefined {
+  const current = model.options
+  if (current?.providerOptions) return current
+  return (model.route as { defaults?: RequestDefaults } | undefined)?.defaults
+}
 
 // Mirrors OpenCode 2.2.7's token-sharing fallback inventory.
 const tokenSharingModels = new Set([
@@ -109,7 +134,15 @@ export function model(modelID: string, settings: OpenAI.Settings) {
     throw new Error("OpenAI account binding is unavailable. Reload the plugin and select the account again.")
   }
 
-  const native = OpenAI.model(modelID, { ...options, baseURL: initial.baseURL })
+  // The ChatGPT backend rejects any request without `store: false`, and the value is easy to lose to a
+  // host version change, so ask for it explicitly and verify the model actually carries it.
+  const native = OpenAI.model(modelID, { ...options, baseURL: initial.baseURL, store: false })
+  if (requestDefaults(native)?.providerOptions?.store !== false) {
+    throw new Error(
+      `OpenCode did not apply the OpenAI request defaults to ${modelID}. This plugin targets OpenCode ` +
+        `${targetOpenCode ?? "unknown"}; update its @opencode/* dependencies to match the running OpenCode.`,
+    )
+  }
   const auth = Auth.custom((input) => Effect.gen(function* () {
     const binding = typeof openAIAccountBinding === "string" ? runtime.bindings.get(openAIAccountBinding) : undefined
     if (!binding) {
@@ -213,6 +246,13 @@ function providerIDs(connections: readonly SavedConnection[]) {
 
 /** Register one provider per saved ChatGPT account and follow account changes. */
 export async function setup(context: Context) {
+  // Patch releases have moved the provider APIs this plugin builds on, so a mismatch is worth saying out loud.
+  if (targetOpenCode && /^\d+\.\d+\.\d+$/.test(targetOpenCode) && targetOpenCode !== context.app.version)
+    console.warn(
+      `opencode-openai-accounts targets OpenCode ${targetOpenCode} but OpenCode ${context.app.version} is running. ` +
+        `Update the plugin's @opencode/* dependencies to match.`,
+    )
+
   type Account = { connection: SavedConnection; bindingID: string; kind: Binding["kind"]; baseURL: string; providerID: Provider.ID }
   let accounts = new Map<string, Account>()
   let accountProviders = new Set<string>()
